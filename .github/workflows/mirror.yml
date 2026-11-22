@@ -1,0 +1,46 @@
+name: Mirror LTX image to GHCR
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ltx-image-mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SOURCE: docker.io/notrius/ltx-2.5-serverless:cu130
+      TARGET: ghcr.io/gafoufete-stack/docuia-ltx-mirror:cu130
+      REGISTRY_AUTH_FILE: ${{ runner.temp }}/registry-auth.json
+    steps:
+      - name: Install registry copy tool
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends skopeo
+      - name: Copy image without running it and verify digest
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          trap 'rm -f "$REGISTRY_AUTH_FILE"' EXIT
+          printf '%s' "$GHCR_TOKEN" | skopeo login --username "$GHCR_USER" --password-stdin ghcr.io
+          SOURCE_DIGEST="$(skopeo inspect --raw "docker://$SOURCE" | sha256sum | cut -d ' ' -f 1)"
+          SOURCE_DIGEST="sha256:$SOURCE_DIGEST"
+          SOURCE_REPOSITORY="docker.io/notrius/ltx-2.5-serverless"
+          skopeo copy --all --preserve-digests --retry-times 3 "docker://$SOURCE_REPOSITORY@$SOURCE_DIGEST" "docker://$TARGET"
+          TARGET_DIGEST="$(skopeo inspect --raw "docker://$TARGET" | sha256sum | cut -d ' ' -f 1)"
+          TARGET_DIGEST="sha256:$TARGET_DIGEST"
+          test "$SOURCE_DIGEST" = "$TARGET_DIGEST"
+          echo "Verified mirror: $TARGET" >> "$GITHUB_STEP_SUMMARY"
+          echo "Source: $SOURCE_REPOSITORY@$SOURCE_DIGEST" >> "$GITHUB_STEP_SUMMARY"
+          echo "Destination digest: $TARGET_DIGEST" >> "$GITHUB_STEP_SUMMARY"
+          echo "No image was executed." >> "$GITHUB_STEP_SUMMARY"
