@@ -18,7 +18,6 @@ jobs:
     env:
       SOURCE: docker.io/notrius/ltx-2.5-serverless:cu130
       TARGET: ghcr.io/gafoufete-stack/docuia-ltx-mirror:cu130
-      REGISTRY_AUTH_FILE: ${{ runner.temp }}/registry-auth.json
     steps:
       - name: Install registry copy tool
         run: |
@@ -31,6 +30,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export REGISTRY_AUTH_FILE="$RUNNER_TEMP/registry-auth.json"
           trap 'rm -f "$REGISTRY_AUTH_FILE"' EXIT
           printf '%s' "$GHCR_TOKEN" | skopeo login --username "$GHCR_USER" --password-stdin ghcr.io
           SOURCE_DIGEST="$(skopeo inspect --raw "docker://$SOURCE" | sha256sum | cut -d ' ' -f 1)"
